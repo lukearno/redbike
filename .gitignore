@@ -1,0 +1,17 @@
+*.pyc
+*~
+*/*.pyc
+*/*/*.pyc
+.virt
+.coverage
+build
+dist
+*.tar.gz
+*.log
+.redbike.conf
+.redbike.timefile
+coverage.xml
+*.egg-info
+benchmark/results
+.#*
+benchmark-results

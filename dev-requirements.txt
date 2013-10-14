@@ -1,0 +1,8 @@
+coverage==3.6
+flake8==2.0
+flexmock==0.9.1
+mccabe==0.2.1
+nose==1.3.0
+nosexcover==1.0.8
+pep8==1.4.5
+pyflakes==0.7.3
