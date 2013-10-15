@@ -58,8 +58,9 @@ To run jobs in redbike just enter a JOBID and schedule. Schedules
 can be in iCal [RRULE](http://www.kanzaki.com/docs/ical/rrule.html)
 format or one of the following special values:
 
+* `NOW` - run once right away
 * `AT:TIMESTAMP` - run once at the specified time
-* `CONTINUE` - just re-queue right away
+* `CONTINUE` - just keep re-queueing right away
 * `STOP` - don't run anymore
  
 If `--after` is provided, it will override the timefile (see below)

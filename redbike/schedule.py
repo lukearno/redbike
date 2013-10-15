@@ -18,10 +18,6 @@ class StopWork(Exception):
     """Just schedule the current job to STOP."""
 
 
-class BailOut(Exception):
-    """Bail out of running a worker or dispatch."""
-
-
 class Redbike(object):
 
     def __init__(self, worker, prefix=None, redis_config=None, timefile=None,
@@ -74,6 +70,9 @@ class Redbike(object):
         if schedule == 'STOP':
             pass
         elif schedule == 'CONTINUE':
+            self.enqueue(jobid)
+        elif schedule == 'NOW':
+            self.set_schedule(jobid, 'STOP')
             self.enqueue(jobid)
         elif schedule.startswith("AT:"):
             self.set_schedule(jobid, 'STOP')

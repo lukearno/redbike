@@ -41,7 +41,7 @@ class RedbikeTests(TestCase):
         tell = self.bike.tell('job:A')
         #B: Setting a job to CONTINUE registers CONTINUE in the schedules.
         self.assertEqual(tell['schedule'], 'CONTINUE')
-        #B: Setting a job to CONTINUE registers SET status.
+        #B: Setting a job to CONTINUE registers ENQ status.
         self.assertTrue(tell['status'].startswith('ENQ:'))
         #B: Setting a job to CONTINUE enters it in the work queue.
         self.assertEqual(self.queue(), ['job:A'])
@@ -82,6 +82,22 @@ class RedbikeTests(TestCase):
         self.assertTrue(tell['status'].startswith('BAD:'))
         #B: Setting a job to a bad RRULE does not queue or schedule.
         self.assertEqual(self.timeline(), [])
+        self.assertEqual(self.queue(), [])
+
+    def test_now(self):
+        self.bike.set('job:A', 'NOW')
+        tell = self.bike.tell('job:A')
+        #B: Setting a job to NOW registers STOP in the schedules.
+        self.assertEqual(tell['schedule'], 'STOP')
+        #B: Setting a job to NOW registers ENQ status.
+        self.assertTrue(tell['status'].startswith('ENQ:'))
+        #B: Setting a job to CONTINUE enters it in the work queue.
+        self.assertEqual(self.queue(), ['job:A'])
+        #B: Setting a job to CONTINUE skips the timeline.
+        self.assertEqual(tell['next_run'], None)
+        #B: A NOW job does not run again.
+        self.bike.work()
+        self.assertEqual(self.result('job:A'), '1')
         self.assertEqual(self.queue(), [])
 
     def test_at(self):
