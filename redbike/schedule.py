@@ -116,6 +116,7 @@ class Redbike(object):
             point_in_time = after
         else:
             point_in_time = self.point_in_time()
+        point_in_time = int(point_in_time)
         while True:
             outstanding = self.redis.zrange(self.timeline_key,
                                             0,
