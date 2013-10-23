@@ -31,6 +31,9 @@ class Redbike(object):
         self.schedules_key = '%s-schedules' % self.prefix
         self.timeline_key = '%s-timeline' % self.prefix
         self.control_key = '%s-control' % self.prefix
+        # Capture queue_name generator here so that after halting
+        # subsequent calls to work() don't just keep hitting the first queue.
+        self.consumer = self.worker.consume(self)
 
     def control(self, signal):
         self.redis.set(self.control_key, SIGNALS[signal.upper()])
@@ -133,7 +136,7 @@ class Redbike(object):
                 break
 
     def work(self):
-        for jobid in self.worker.consume(self):
+        for jobid in self.consumer:
             if jobid:
                 self.set_status(jobid, 'WRK')
                 try:
