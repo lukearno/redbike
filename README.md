@@ -111,9 +111,9 @@ many cases. Just override its `work()` method.
 
 ```python
 # mymodule.py
-from redbike import RoundRobbin, StopSchedule
+from redbike import RoundRobin, StopSchedule
 
-class Worker(RoundRobbin):
+class Worker(RoundRobin):
 
     def work(self, bike, jobid):
         should_stop = do_something(jobid)

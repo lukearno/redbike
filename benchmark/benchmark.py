@@ -1,10 +1,10 @@
 from itertools import cycle
 import sys
 
-from redbike import Redbike, RoundRobbin
+from redbike import Redbike, RoundRobin
 
 
-class Worker(RoundRobbin):
+class Worker(RoundRobin):
 
     def queue_names(self, bike):
         return ['%s-work-%s' % (bike.prefix, x)

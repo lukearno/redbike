@@ -2,7 +2,7 @@ import logging
 import pkg_resources
 import sys
 
-from redbike.schedule import Redbike, RoundRobbin, StopWork
+from redbike.schedule import Redbike, RoundRobin, StopWork
 
 
 version_file = pkg_resources.resource_filename(__name__, 'VERSION')
@@ -19,4 +19,4 @@ hdlr.setFormatter(logging.Formatter(FORMAT))
 log.addHandler(hdlr)
 
 
-__all__ = ['log', 'Redbike', 'RoundRobbin', 'StopWork', '__version__']
+__all__ = ['log', 'Redbike', 'RoundRobin', 'StopWork', '__version__']

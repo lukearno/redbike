@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 import os
 import time
 
@@ -5,10 +6,10 @@ from unittest import TestCase
 
 from flexmock import flexmock
 
-from redbike import Redbike, RoundRobbin, StopWork
+from redbike import Redbike, RoundRobin, StopWork
 
 
-class TestWorker(RoundRobbin):
+class TestWorker(RoundRobin):
 
     def work(self, bike, jobid):
         bike.redis.hincrby('biketest-results', jobid, amount=1)
@@ -36,6 +37,10 @@ class RedbikeTests(TestCase):
     def timeline(self):
         return self.r.zrange(self.bike.timeline_key, 0, -1)
 
+    def gen_rrule(self):
+        return "DTSTART:%s\nRRULE:FREQ=SECONDLY" % (
+            (datetime.utcnow() - timedelta(minutes=1)).isoformat())
+
     def test_continue_and_stop(self):
         self.bike.set('job:A', 'CONTINUE')
         tell = self.bike.tell('job:A')
@@ -58,7 +63,7 @@ class RedbikeTests(TestCase):
         self.assertEqual(self.queue(), [])
 
     def test_rrule(self):
-        self.bike.set('job:A', "DTSTART:20131009T164510\nRRULE:FREQ=Secondly")
+        self.bike.set('job:A', self.gen_rrule())
         tell = self.bike.tell('job:A')
         #B: Setting a job to RRULE puts a TML event in statuses.
         self.assertTrue(tell['status'].startswith('TML:'))

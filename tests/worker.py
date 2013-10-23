@@ -1,8 +1,8 @@
 
-from redbike import RoundRobbin
+from redbike import RoundRobin
 
 
-class Worker(RoundRobbin):
+class Worker(RoundRobin):
 
     def work(self, bike, jobid):
         bike.log.debug(jobid)

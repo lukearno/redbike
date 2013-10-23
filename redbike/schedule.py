@@ -2,7 +2,6 @@
 import calendar
 import csv
 from datetime import datetime
-from itertools import cycle
 import logging
 import os
 import time
@@ -153,7 +152,8 @@ class Redbike(object):
 
     def get_statuses(self, before=None):
         if before is None:
-            before = int(time.time())
+            before = time.time()
+        before = int(before)
         all_statuses = self.redis.hgetall(self.statuses_key)
         for jobid, status in all_statuses.iteritems():
             event, timestamp = status.split(':')
@@ -177,7 +177,7 @@ class Redbike(object):
                 "next_run": self.redis.zscore(self.timeline_key, jobid)}
 
 
-class RoundRobbin(object):
+class RoundRobin(object):
 
     def __init__(self, initstring):
         self.initstring = initstring
@@ -196,8 +196,9 @@ class RoundRobbin(object):
                 for x in self.initstring.split(':')]
 
     def consume(self, bike):
-        for queue_name in cycle(self.queue_names(bike)):
-            yield bike.redis.rpop(queue_name)
+        while True:
+            for queue_name in self.queue_names(bike):
+                yield bike.redis.rpop(queue_name)
 
     def work(self, bike, jobid):
         raise NotImplemented  # pragma: no cover
