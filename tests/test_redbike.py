@@ -71,8 +71,11 @@ class RedbikeTests(TestCase):
         self.assertEqual(self.timeline(), ['job:A'])
         #B: Setting a job to RRULE does not go straight to the work queue.
         self.assertEqual(self.queue(), [])
-        #B: Setting a job to RRULE is put in the work queue by the scheduler.
+        #B: An RRULE is not put in the work queue by the schedule when not due.
         self.bike.dispatch()
+        self.assertEqual(self.queue(), [])
+        #B: An RRULE is queued up by the scheduler once it is due.
+        self.bike.dispatch(after=time.time() + 2)
         self.assertEqual(self.queue(), ['job:A'])
         #B: Setting a job to RRULE goes back in the timeline after it is run.
         self.bike.work()
@@ -106,7 +109,7 @@ class RedbikeTests(TestCase):
         self.assertEqual(self.queue(), [])
 
     def test_at(self):
-        self.bike.set('job:A', 'AT:%s' % int(time.time()))
+        self.bike.set('job:A', 'AT:%s' % int(time.time() + 2))
         tell = self.bike.tell('job:A')
         #B: Setting a job to AT:TIMESTAMP puts a TML event in statuses.
         self.assertTrue(tell['status'].startswith('TML:'))
@@ -114,8 +117,11 @@ class RedbikeTests(TestCase):
         self.assertEqual(self.timeline(), ['job:A'])
         #B: Setting a job to AT:TIMESTAMP does not go straight to thequeue.
         self.assertEqual(self.queue(), [])
-        #B: Setting a job to AT:TIMESTAMP is queued by the scheduler.
+        #B: An AT:TIMESTAMP is not queued by the schedule when not due.
         self.bike.dispatch()
+        self.assertEqual(self.queue(), [])
+        #B: An AT:TIMESTAMP is queued up by the scheduler once it is due.
+        self.bike.dispatch(after=time.time() + 3)
         self.assertEqual(self.queue(), ['job:A'])
         #B: An AT:TIMESTAMP job does not go back into the timeline or queue.
         self.bike.work()

@@ -120,9 +120,8 @@ class Redbike(object):
             point_in_time = self.point_in_time()
         point_in_time = int(point_in_time)
         while True:
-            outstanding = self.redis.zrange(self.timeline_key,
-                                            0,
-                                            point_in_time)
+            outstanding = self.redis.zrangebyscore(
+                self.timeline_key, 0, point_in_time)
             for jobid in outstanding:
                 self.redis.zrem(self.timeline_key, jobid)
                 self.enqueue(jobid)

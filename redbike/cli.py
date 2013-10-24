@@ -108,6 +108,7 @@ def run():
                    prefix=conf.get('prefix'),
                    redis_config=redis_conf,
                    log=log,
+                   timefile=conf.get('timefile'),
                    stop_event=stop_event)
     func = globals()['do_' + command]
     pipe_r, pipe_w = os.pipe()
