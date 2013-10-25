@@ -70,7 +70,7 @@ class Redbike(object):
 
     def schedule(self, jobid, schedule, after=None):
         if schedule == 'STOP':
-            pass
+            self.set_status(jobid, 'STP')
         elif schedule == 'CONTINUE':
             self.enqueue(jobid)
         elif schedule == 'NOW':
@@ -85,13 +85,14 @@ class Redbike(object):
             try:
                 rrule = rrulestr(schedule)
                 next_run_dt = rrule.after(after_dt)
-            except:
+                if next_run_dt:
+                    next_run = calendar.timegm(next_run_dt.timetuple())
+                    self.add_to_timeline(jobid, next_run)
+                else:
+                    self.set_status(jobid, 'STP')
+            except ValueError:
                 self.set_status(jobid, 'BAD')
                 self.log.warn("%s Bad RRULE", jobid)
-                next_run_dt = None
-            if next_run_dt:
-                next_run = calendar.timegm(next_run_dt.timetuple())
-                self.add_to_timeline(jobid, next_run)
 
     def reschedule(self, jobid):
         schedule = self.redis.hget(self.schedules_key, jobid)
@@ -143,7 +144,6 @@ class Redbike(object):
                         self.worker.work(self, jobid)
                     except StopWork:
                         self.set_schedule(jobid, 'STOP')
-                        self.set_status(jobid, 'STP')
                     self.reschedule(jobid)
                 except Exception as ex:
                     self.log.exception(ex)

@@ -92,6 +92,12 @@ class RedbikeTests(TestCase):
         self.assertEqual(self.timeline(), [])
         self.assertEqual(self.queue(), [])
 
+    def test_rrule_runs_out(self):
+        self.bike.set('job:A', self.gen_rrule()+";COUNT=1")
+        tell = self.bike.tell('job:A')
+        #B: Scheduling an rrule that has run out registers a STP event.
+        self.assertTrue(tell['status'].startswith('STP:'))
+
     def test_now(self):
         self.bike.set('job:A', 'NOW')
         tell = self.bike.tell('job:A')
@@ -107,6 +113,9 @@ class RedbikeTests(TestCase):
         self.bike.work()
         self.assertEqual(self.result('job:A'), '1')
         self.assertEqual(self.queue(), [])
+        #B: A stop event is registered after the NOW job is run.
+        tell = self.bike.tell('job:A')
+        self.assertTrue(tell['status'].startswith('STP:'))
 
     def test_at(self):
         self.bike.set('job:A', 'AT:%s' % int(time.time() + 2))
@@ -128,6 +137,9 @@ class RedbikeTests(TestCase):
         self.assertEqual(self.result('job:A'), '1')
         self.assertEqual(self.timeline(), [])
         self.assertEqual(self.queue(), [])
+        #B: A stop event is registered after the AT:TIME job is run.
+        tell = self.bike.tell('job:A')
+        self.assertTrue(tell['status'].startswith('STP:'))
 
     def test_dispatch_with_csv(self):
         #B: Dispatching with a CSV of job,schedule records schedules the jobs.
@@ -136,7 +148,7 @@ class RedbikeTests(TestCase):
         self.assertEqual(sched['job1:A'], 'CONTINUE')
         self.assertEqual(sched['job2:B'], 'STOP')
         statuses = list(self.bike.get_statuses())
-        self.assertEqual(len(statuses), 1)
+        self.assertEqual(len(statuses), 2)
 
     def test_dispatch_with_after(self):
         #B: Dispatching with an after overrides the timefile.
