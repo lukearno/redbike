@@ -2,6 +2,7 @@
 
 Usage:
  redbike [--config=<CONF>] set <JOBID> <SCHEDULE> [--after=<TIMESTAMP>]
+ redbike [--config=<CONF>] unset <JOBID>
  redbike [--config=<CONF>] dispatch [<WORKER>]
          [--schedules=<SCHEDULESCSV> [--after=<TIMESTAMP>]]
  redbike [--config=<CONF>] work [<WORKER>]
@@ -48,6 +49,11 @@ def do_set(bike, args):
     jobid = args['<JOBID>']
     schedule = args['<SCHEDULE>']
     bike.set(jobid, schedule, after=after)
+
+
+def do_unset(bike, args):
+    jobid = args['<JOBID>']
+    bike.unset(jobid)
 
 
 def do_dispatch(bike, args):

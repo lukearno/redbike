@@ -1,5 +1,5 @@
-rm coverage.xml
-rm .coverage
+rm -f coverage.xml
+rm -f .coverage
 PYTHONWARNINGS=d nosetests -xs --with-xcover --cover-package redbike tests/
 if [ $? -eq 0 ]; then
   echo "\nBehaviors verified:\n"

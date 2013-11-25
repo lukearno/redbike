@@ -41,6 +41,28 @@ class RedbikeTests(TestCase):
         return "DTSTART:%s\nRRULE:FREQ=SECONDLY" % (
             (datetime.utcnow() - timedelta(minutes=1)).isoformat())
 
+    def test_set_and_unset(self):
+        #B: Setting a job populates the attendant data structures in Redis.
+        self.assertEqual(self.bike.tell('job:A'),
+                         {'status': None, 'next_run': None, 'schedule': None})
+        self.bike.set('job:A', 'AT:%s' % int(time.time() + 2))
+        tell = self.bike.tell('job:A')
+        self.assertTrue(tell['status'].startswith('TML:'))
+        self.assertNotEqual(tell['next_run'], None)
+        #B: Un-setting a job clears the attendant data structures in Redis.
+        self.bike.unset('job:A')
+        self.assertEqual(self.bike.tell('job:A'),
+                         {'status': None, 'next_run': None, 'schedule': None})
+        #B: Un-setting a job does not remove it from the work queue.
+        self.bike.set('job:A', 'CONTINUE')
+        self.bike.unset('job:A')
+        self.assertEqual(self.queue(), ['job:A'])
+        #B: An unset job still in queue goes away quietly after it is worked.
+        self.bike.work()
+        self.assertEqual(self.bike.tell('job:A'),
+                         {'status': None, 'next_run': None, 'schedule': None})
+        self.assertEqual(self.queue(), [])
+
     def test_continue_and_stop(self):
         self.bike.set('job:A', 'CONTINUE')
         tell = self.bike.tell('job:A')

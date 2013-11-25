@@ -60,6 +60,11 @@ class Redbike(object):
         self.set_schedule(jobid, schedule)
         self.schedule(jobid, schedule, after=after)
 
+    def unset(self, jobid):
+        self.redis.hdel(self.statuses_key, jobid)
+        self.redis.hdel(self.schedules_key, jobid)
+        self.redis.zrem(self.timeline_key, jobid)
+
     def add_to_timeline(self, jobid, timestamp):
         self.set_status(jobid, 'TML')
         self.redis.zadd(self.timeline_key, int(timestamp), jobid)
@@ -69,7 +74,9 @@ class Redbike(object):
         self.worker.enqueue(self, jobid)
 
     def schedule(self, jobid, schedule, after=None):
-        if schedule == 'STOP':
+        if schedule is None:
+            self.unset(jobid)
+        elif schedule == 'STOP':
             self.set_status(jobid, 'STP')
         elif schedule == 'CONTINUE':
             self.enqueue(jobid)
