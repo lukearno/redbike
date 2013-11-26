@@ -111,7 +111,7 @@ many cases. Just override its `work()` method.
 
 ```python
 # mymodule.py
-from redbike import RoundRobin, StopSchedule
+from redbike import RoundRobin, StopWork
 
 class Worker(RoundRobin):
 
@@ -199,3 +199,16 @@ This will output a json representation like this:
   "schedule": "CONTINUE"
 }
 ```
+
+## Removing Unwanted Jobs
+
+Once a job is no longer relevant and you want to take it out of
+rotation:
+
+```bash
+$ redbike unset <JOBID>
+```
+
+If the job is currently in a work queue it will not be removed, but 
+it will disappear after it is worked, unless it dies, in which case
+it will leave a DIE event behind in statuses.
