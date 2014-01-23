@@ -13,6 +13,8 @@ class TestWorker(RoundRobin):
 
     def work(self, bike, jobid):
         bike.redis.hincrby('biketest-results', jobid, amount=1)
+        if jobid.startswith('backoff:'):
+            return int(jobid[8:9])
         if jobid.startswith('stopper:'):
             raise StopWork("Stop this job.")
         if jobid.startswith('fail:'):
@@ -83,6 +85,21 @@ class RedbikeTests(TestCase):
         self.bike.work()
         self.assertEqual(self.result('job:A'), '2')
         self.assertEqual(self.queue(), [])
+
+    def test_continue_with_backoff(self):
+        self.bike.set('backoff:2:A', 'CONTINUE')
+        #B: Setting a job to CONTINUE skips the timeline.
+        self.assertEqual(self.timeline(), [])
+        self.assertEqual(self.queue(), ['backoff:2:A'])
+        #B: A CONTINUE job with backoff goes into the timeline.
+        self.bike.work()
+        self.assertEqual(self.result('backoff:2:A'), '1')
+        self.assertEqual(self.timeline(), ['backoff:2:A'])
+        self.assertEqual(self.queue(), [])
+        #B: A CONTINUE job with backoff runs again after specified backoff.
+        self.bike.dispatch(after=time.time() + 2)
+        self.assertEqual(self.timeline(), [])
+        self.assertEqual(self.queue(), ['backoff:2:A'])
 
     def test_rrule(self):
         self.bike.set('job:A', self.gen_rrule())

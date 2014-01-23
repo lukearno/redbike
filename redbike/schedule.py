@@ -73,11 +73,13 @@ class Redbike(object):
         self.set_status(jobid, 'ENQ')
         self.worker.enqueue(self, jobid)
 
-    def schedule(self, jobid, schedule, after=None):
+    def schedule(self, jobid, schedule, after=None, backoff=None):
         if schedule is None:
             self.unset(jobid)
         elif schedule == 'STOP':
             self.set_status(jobid, 'STP')
+        elif schedule == 'CONTINUE' and backoff:
+            self.add_to_timeline(jobid, int(time.time()) + backoff)
         elif schedule == 'CONTINUE':
             self.enqueue(jobid)
         elif schedule == 'NOW':
@@ -101,9 +103,9 @@ class Redbike(object):
                 self.set_status(jobid, 'BAD')
                 self.log.warn("%s Bad RRULE", jobid)
 
-    def reschedule(self, jobid):
+    def reschedule(self, jobid, backoff=None):
         schedule = self.redis.hget(self.schedules_key, jobid)
-        self.schedule(jobid, schedule)
+        self.schedule(jobid, schedule, backoff=backoff)
 
     def load_csv(self, csvfilename):
         # TODO: This should be pipelined.
@@ -148,10 +150,10 @@ class Redbike(object):
                 self.set_status(jobid, 'WRK')
                 try:
                     try:
-                        self.worker.work(self, jobid)
+                        backoff = self.worker.work(self, jobid)
                     except StopWork:
                         self.set_schedule(jobid, 'STOP')
-                    self.reschedule(jobid)
+                    self.reschedule(jobid, backoff=backoff)
                 except Exception as ex:
                     self.log.exception(ex)
                     self.set_status(jobid, 'DIE')
