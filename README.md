@@ -133,6 +133,14 @@ $ redbike set job1:A CONTINUE
 $ redbike set job2:B CONTINUE
 $ redbike work mymodule:Work("A:A:B")
 ```
+## Backoff
+
+Workers with `CONTINUE` schedules may sometimes wish to 
+introduce a backoff. The worker's `work()` method may
+return an interger value of backoff seconds and the job
+will be entered into the timeline to be enqueued for 
+work again after the specified backoff has elapsed.
+
 ## Stopping
 
 ```bash
