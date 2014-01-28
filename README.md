@@ -22,6 +22,7 @@ Redbike has a simple design
 * A registry of job statuses (another [hash](http://redis.io/topics/data-types#hashes)) format: "EVENT:TIMESTAMP"
 * A timeline of scheduled work (a [sorted set](http://redis.io/topics/data-types#sorted-sets) scored by timestamp of next run)
 * Any number of job queues ([lists](http://redis.io/topics/data-types#lists))
+* A registry of jobs being worked (a [set]((http://redis.io/topics/data-types#sets)))
 * A single dispatcher process to enqueue work that is due on the timeline
 * Any number of worker processes
 
@@ -98,7 +99,8 @@ $ redbike work [<WORKER>]
 ```
 
 Redbike consumes jobs from the work queues using the worker class's
-`consume()` method and passes them to the worker's `work()` method.
+`queue_names()` method (and appending them to the `prefix`) 
+and passes them to the worker's `work()` method.
 If `StopWork` is raised, the job's schedule is set to `STOP`. If
 any other exception is raised it is logged and the job is not 
 rescheduled. Otherwise the job's schedule is checked and it's 
@@ -115,7 +117,7 @@ from redbike import RoundRobin, StopWork
 
 class Worker(RoundRobin):
 
-    def work(self, bike, jobid):
+    def work(self, jobid):
         should_stop = do_something(jobid)
         if should_stop:
             raise StopWork("Don't run this job any more!")
@@ -140,6 +142,16 @@ introduce a backoff. The worker's `work()` method may
 return an interger value of backoff seconds and the job
 will be entered into the timeline to be enqueued for 
 work again after the specified backoff has elapsed.
+
+## Outstanding Set
+
+When workers consume jobs from the queue, they add the
+jobid to the "outstanding" set. When they complete, they
+remove the jobid and reschedule. If the jobid is no longer
+in the outstanding set when the job completes, it will not
+reschedule. This behavior prevents the worker from stepping
+on schedule changes (typically made by `set()` and `unset()`)
+that may have happened while the job was being worked.
 
 ## Stopping
 

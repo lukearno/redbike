@@ -30,10 +30,11 @@ class Redbike(object):
         self.statuses_key = '%s-statuses' % self.prefix
         self.schedules_key = '%s-schedules' % self.prefix
         self.timeline_key = '%s-timeline' % self.prefix
+        self.outstanding_key = '%s-outstanding' % self.prefix
         self.control_key = '%s-control' % self.prefix
         # Capture queue_name generator here so that after halting
         # subsequent calls to work() don't just keep hitting the first queue.
-        self.consumer = self.worker.consume(self)
+        self.consumer = self.consumer_generator()
 
     def control(self, signal):
         self.redis.set(self.control_key, SIGNALS[signal.upper()])
@@ -57,6 +58,7 @@ class Redbike(object):
         self.redis.hset('%s-schedules' % self.prefix, jobid, schedule)
 
     def set(self, jobid, schedule, after=None):
+        self.unset(jobid)
         self.set_schedule(jobid, schedule)
         self.schedule(jobid, schedule, after=after)
 
@@ -64,14 +66,19 @@ class Redbike(object):
         self.redis.hdel(self.statuses_key, jobid)
         self.redis.hdel(self.schedules_key, jobid)
         self.redis.zrem(self.timeline_key, jobid)
+        self.redis.srem(self.outstanding_key, jobid)
+        self.remove_from_queue(jobid)
 
     def add_to_timeline(self, jobid, timestamp):
         self.set_status(jobid, 'TML')
         self.redis.zadd(self.timeline_key, int(timestamp), jobid)
 
+    def queue_for(self, jobid):
+        return "%s-%s" % (self.prefix, self.worker.queue_for(jobid))
+
     def enqueue(self, jobid):
         self.set_status(jobid, 'ENQ')
-        self.worker.enqueue(self, jobid)
+        self.redis.lpush(self.queue_for(jobid), jobid)
 
     def schedule(self, jobid, schedule, after=None, backoff=None):
         if schedule is None:
@@ -104,11 +111,11 @@ class Redbike(object):
                 self.log.warn("%s Bad RRULE", jobid)
 
     def reschedule(self, jobid, backoff=None):
-        schedule = self.redis.hget(self.schedules_key, jobid)
-        self.schedule(jobid, schedule, backoff=backoff)
+        if self.redis.srem(self.outstanding_key, jobid):
+            schedule = self.redis.hget(self.schedules_key, jobid)
+            self.schedule(jobid, schedule, backoff=backoff)
 
     def load_csv(self, csvfilename):
-        # TODO: This should be pipelined.
         with open(csvfilename) as csvfile:
             reader = csv.reader(csvfile)
             for jobid, schedule in reader:
@@ -144,13 +151,28 @@ class Redbike(object):
                 self.log.info("stopping on command")
                 break
 
+    def remove_from_queue(self, jobid):
+        return self.redis.lrem(self.queue_for(jobid), 0, jobid)
+
+    def queue_names(self):
+        return ["%s-%s" % (self.prefix, queue_name)
+                for queue_name in self.worker.queue_names()]
+
+    def consumer_generator(self):
+        while True:
+            for queue_name in self.queue_names():
+                jobid = self.redis.rpop(queue_name)
+                self.redis.sadd(self.outstanding_key, jobid)
+                yield jobid
+
     def work(self):
         for jobid in self.consumer:
             if jobid:
                 self.set_status(jobid, 'WRK')
                 try:
+                    backoff = None
                     try:
-                        backoff = self.worker.work(self, jobid)
+                        backoff = self.worker.work(jobid)
                     except StopWork:
                         self.set_schedule(jobid, 'STOP')
                     self.reschedule(jobid, backoff=backoff)
@@ -176,10 +198,11 @@ class Redbike(object):
         return self.redis.hgetall(self.schedules_key).iteritems()
 
     def flush(self):
-        self.redis.delete(*(self.worker.queue_names(self)
+        self.redis.delete(*(self.queue_names()
                             + [self.statuses_key,
                                self.schedules_key,
                                self.timeline_key,
+                               self.outstanding_key,
                                self.control_key]))
 
     def tell(self, jobid):
@@ -193,23 +216,14 @@ class RoundRobin(object):
     def __init__(self, initstring):
         self.initstring = initstring
 
-    def name_queue(self, bike, code):
-        return '%s-work-%s' % (bike.prefix, code)
+    def name_queue(self, code):
+        return 'work-%s' % code
 
-    def queue_for(self, bike, jobid):
-        return self.name_queue(bike, jobid.split(':')[-1])
+    def queue_for(self, jobid):
+        return self.name_queue(jobid.split(':')[-1])
 
-    def enqueue(self, bike, jobid):
-        return bike.redis.lpush(self.queue_for(bike, jobid), jobid)
+    def queue_names(self):
+        return [self.name_queue(x) for x in self.initstring.split(':')]
 
-    def queue_names(self, bike):
-        return [self.name_queue(bike, x)
-                for x in self.initstring.split(':')]
-
-    def consume(self, bike):
-        while True:
-            for queue_name in self.queue_names(bike):
-                yield bike.redis.rpop(queue_name)
-
-    def work(self, bike, jobid):
+    def work(self, jobid):
         raise NotImplemented  # pragma: no cover
