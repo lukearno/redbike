@@ -7,51 +7,58 @@ from unittest import TestCase
 from flexmock import flexmock
 
 from redbike import Redbike, RoundRobin, StopWork
+from redbike.schedule import _e  # for py3 compat
 
 
 class TestWorker(RoundRobin):
 
     def work(self, jobid):
-        self.redis.hincrby('biketest-results', jobid, amount=1)
+        self.bike.redis.hincrby('biketest-results', jobid, amount=1)
+        assert self.bike.is_working(jobid), "redbike knows job is working"
         if jobid.startswith('backoff:'):
             return int(jobid[8:9])
         if jobid.startswith('stopper:'):
             raise StopWork("Stop this job.")
         if jobid.startswith('fail:'):
             raise Exception("Boom")
+        if jobid.endswith('Z'):
+            time.sleep(2)
+
+    def timeout(self, queue_name, default=None):
+        if queue_name.endswith('Z'):
+            return 1
+        else:
+            return default
 
 
 class RedbikeTests(TestCase):
 
     def setUp(self):
-        self.bike = Redbike(TestWorker('A'), prefix='biketest')
-        self.bike.worker.redis = self.bike.redis
+        self.bike = Redbike(TestWorker('A:Z'), prefix='biketest')
+        self.bike.worker.bike = self.bike
         self.r = self.bike.redis  # for convenience
         self.bike.flush()
         self.r.delete('biketest-results')
         self.bike.control("HALT")
 
     def queue(self, name='A'):
-        return self.r.lrange('biketest-work-%s' % name, 0, -1)
+        return list(map(_e, self.r.lrange('biketest-work-%s' % name, 0, -1)))
 
     def result(self, jobid):
-        return self.r.hget('biketest-results', jobid)
+        return _e(self.r.hget('biketest-results', jobid))
 
     def schedules(self):
-        return self.r.hgetall(self.bike.schedules_key)
+        return {k: _e(v) for k, v
+                in self.r.hgetall(self.bike.schedules_key).items()}
 
     def timeline(self):
-        return self.r.zrange(self.bike.timeline_key, 0, -1)
-
-    def outstanding(self):
-        return self.r.smembers(self.bike.outstanding_key)
+        return list(map(_e, self.r.zrange(self.bike.timeline_key, 0, -1)))
 
     def report(self, queue_names=None):
         if queue_names is None:
             queue_names = ['A']
         print("SCHEDULES", self.schedules())
         print("TIMELINE", self.timeline())
-        print("OUTSTANDING", self.outstanding())
         for qn in queue_names:
             print("QUEUE %s:" % qn, self.queue(name=qn))
 
@@ -59,31 +66,47 @@ class RedbikeTests(TestCase):
         return "DTSTART:%s\nRRULE:FREQ=SECONDLY" % (
             (datetime.utcnow() - timedelta(minutes=1)).isoformat())
 
+    def work_round(self):
+        self.bike.work()
+        self.bike.work()
+
     def test_set_and_unset(self):
         #B: Setting a job populates the attendant data structures in Redis.
         self.assertEqual(self.bike.tell('job:A'),
-                         {'status': None, 'next_run': None, 'schedule': None})
+                         {'status': None,
+                          'next_run': None,
+                          'schedule': None,
+                          'working': False})
         self.bike.set('job:A', 'AT:%s' % int(time.time() + 2))
         tell = self.bike.tell('job:A')
         self.assertTrue(tell['status'].startswith('TML:'))
         self.assertNotEqual(tell['next_run'], None)
-        #B: Un-setting a job clears the attendant data structures in Redis.
+        #B: Un-setting a job clears the attendant dgg1ata structures in Redis.
         self.bike.unset('job:A')
         self.assertEqual(self.bike.tell('job:A'),
-                         {'status': None, 'next_run': None, 'schedule': None})
+                         {'status': None,
+                          'next_run': None,
+                          'schedule': None,
+                          'working': False})
         #B: Un-setting a job does remove it from the work queue.
         self.bike.set('job:A', 'CONTINUE')
         self.bike.unset('job:A')
         self.assertEqual(self.queue(), [])
         #B: An unset job is removed from queue.
-        self.bike.work()
+        self.work_round()
         self.assertEqual(self.bike.tell('job:A'),
-                         {'status': None, 'next_run': None, 'schedule': None})
+                         {'status': None,
+                          'next_run': None,
+                          'schedule': None,
+                          'working': False})
         self.assertEqual(self.queue(), [])
         #B: Setting a None schedule is just like unsetting.
         self.bike.set('job:A', None)
         self.assertEqual(self.bike.tell('job:A'),
-                         {'status': None, 'next_run': None, 'schedule': None})
+                         {'status': None,
+                          'next_run': None,
+                          'schedule': None,
+                          'working': False})
         self.assertEqual(self.queue(), [])
 
     def test_continue_and_stop(self):
@@ -98,15 +121,15 @@ class RedbikeTests(TestCase):
         #B: Setting a job to CONTINUE skips the timeline.
         self.assertEqual(tell['next_run'], None)
         #B: A CONTINUE job goes right back in the work queue.
-        self.bike.work()
+        self.work_round()
         self.assertEqual(self.result('job:A'), '1')
         self.assertEqual(['job:A'], self.queue())
-        #B: Successfully worked job leaves nothing in "outstanding".
-        self.assertEqual(self.outstanding(), set())
-        #B: A CONTINUE job set to STOP is dequeued and not requeued.
+        #B: Successfully worked job shows as no longer working.
+        self.assertFalse(self.bike.is_working('job:A'))
+        #B: A CONTINUE job set to STOP is not requeued.
         self.bike.set('job:A', 'STOP')
-        self.bike.work()
-        self.assertEqual(self.result('job:A'), '1')
+        self.work_round()
+        self.assertEqual(self.result('job:A'), '2')
         self.assertEqual(self.queue(), [])
 
     def test_continue_with_backoff(self):
@@ -115,7 +138,7 @@ class RedbikeTests(TestCase):
         self.assertEqual(self.timeline(), [])
         self.assertEqual(self.queue(), ['backoff:2:A'])
         #B: A CONTINUE job with backoff goes into the timeline.
-        self.bike.work()
+        self.work_round()
         self.assertEqual(self.result('backoff:2:A'), '1')
         self.assertEqual(self.timeline(), ['backoff:2:A'])
         self.assertEqual(self.queue(), [])
@@ -140,7 +163,7 @@ class RedbikeTests(TestCase):
         self.bike.dispatch(after=time.time() + 2)
         self.assertEqual(self.queue(), ['job:A'])
         #B: Setting a job to RRULE goes back in the timeline after it is run.
-        self.bike.work()
+        self.work_round()
         self.assertEqual(self.result('job:A'), '1')
         self.assertEqual(self.queue(), [])
         self.assertEqual(self.timeline(), ['job:A'])
@@ -172,7 +195,7 @@ class RedbikeTests(TestCase):
         #B: Setting a job to CONTINUE skips the timeline.
         self.assertEqual(tell['next_run'], None)
         #B: A NOW job does not run again.
-        self.bike.work()
+        self.work_round()
         self.assertEqual(self.result('job:A'), '1')
         self.assertEqual(self.queue(), [])
         #B: A stop event is registered after the NOW job is run.
@@ -195,7 +218,7 @@ class RedbikeTests(TestCase):
         self.bike.dispatch(after=time.time() + 3)
         self.assertEqual(self.queue(), ['job:A'])
         #B: An AT:TIMESTAMP job does not go back into the timeline or queue.
-        self.bike.work()
+        self.work_round()
         self.assertEqual(self.result('job:A'), '1')
         self.assertEqual(self.timeline(), [])
         self.assertEqual(self.queue(), [])
@@ -206,7 +229,7 @@ class RedbikeTests(TestCase):
     def test_dispatch_with_csv(self):
         #B: Dispatching with a CSV of job,schedule records schedules the jobs.
         self.bike.dispatch(csvfilename='tests/test.csv')
-        sched = dict(self.bike.get_schedules())
+        sched = {_e(k): _e(v) for k, v in self.bike.get_schedules()}
         self.assertEqual(sched['job1:A'], 'CONTINUE')
         self.assertEqual(sched['job2:B'], 'STOP')
         statuses = list(self.bike.get_statuses())
@@ -233,24 +256,46 @@ class RedbikeTests(TestCase):
         self.bike.set('stopper:A', 'CONTINUE')
         #B: Raising StopWork cause the job to be scheduled STOP.
         self.assertEqual(self.bike.tell('stopper:A')['schedule'], 'CONTINUE')
-        self.bike.work()
+        self.work_round()
         self.assertEqual(self.result('stopper:A'), '1')
         self.assertEqual(self.bike.tell('stopper:A')['schedule'], 'STOP')
         #B: Raising StopWork cause the job to not run again.
-        self.bike.work()
+        self.work_round()
         self.assertEqual(self.result('stopper:A'), '1')
 
     def test_job_blows_up(self):
         self.bike.set('fail:A', 'CONTINUE')
+        self.assertEqual(self.queue(), ['fail:A'])
         #B: Raising an unexpected error is handled.
         self.assertEqual(self.bike.tell('fail:A')['schedule'], 'CONTINUE')
-        self.bike.work()
-        #B: Job is left in "outstanding" set after it blows up.
-        self.assertEqual(self.outstanding(), set(['fail:A']))
+        self.work_round()
+        #B: Job does not show up as working after it blows up.
+        self.assertFalse(self.bike.is_working('fail:A'))
         self.assertEqual(self.result('fail:A'), '1')
         tell = self.bike.tell('fail:A')
-        self.assertTrue(tell['status'].startswith('DIE'))
+        self.assertTrue(tell['status'].startswith('DIE:'))
         self.assertEqual(self.bike.tell('fail:A')['schedule'], 'CONTINUE')
         #B: When an unexpected error is raise the job is not rescheduled.
-        self.bike.work()
+        self.work_round()
         self.assertEqual(self.result('fail:A'), '1')
+
+    def test_outstanding_job_tracking(self):
+        self.bike.set('job:A', 'NOW')
+        #B: Job is removed from queue and is_working keys is set when consumed.
+        self.assertFalse(self.bike.is_working('job:A'))
+        self.assertEqual(self.queue(), ['job:A'])
+        next(self.bike.consumer)
+        self.assertTrue(self.bike.is_working('job:A'))
+        self.assertEqual(self.queue(), [])
+        #B: Enqueue is no-op if job is currently being worked.
+        self.bike.set('job:A', 'NOW')
+        self.assertTrue(self.bike.is_working('job:A'))
+        self.assertEqual(self.queue(), [])
+
+    def test_timeouts(self):
+        #B: Job is not rescheduled if it times out.
+        self.bike.set('job:Z', 'CONTINUE')
+        self.assertEqual(self.queue(name='Z'), ['job:Z'])
+        self.work_round()
+        self.assertFalse(self.bike.is_working('job:Z'))
+        self.assertEqual(self.queue(name='Z'), [])

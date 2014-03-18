@@ -14,7 +14,7 @@ test-python:
 	virtualenv .virts/$(pyversion) --python=python$(pyversion)
 	. .virts/$(pyversion)/bin/activate && pip install -i 'http://pypi.python.org/simple' -r dev-requirements.txt > /dev/null
 	. .virts/$(pyversion)/bin/activate && pip install -e '.' > /dev/null
-	. .virts/$(pyversion)/bin/activate && nosetests tests/
+	. .virts/$(pyversion)/bin/activate && nosetests -xs tests/
 stylecheck:
 	. .virts/dev/bin/activate && flake8 redbike tests --max-complexity=12 && echo "\nStyle checks passed.\n"
 test:

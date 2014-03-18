@@ -115,7 +115,8 @@ def run():
                    redis_config=redis_conf,
                    log=log,
                    timefile=conf.get('timefile'),
-                   stop_event=stop_event)
+                   stop_event=stop_event,
+                   default_timeout=conf.get('default-timeout', 10))
     func = globals()['do_' + command]
     pipe_r, pipe_w = os.pipe()
     flags = fcntl.fcntl(pipe_w, fcntl.F_GETFL, 0)
