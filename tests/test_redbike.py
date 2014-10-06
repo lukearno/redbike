@@ -6,7 +6,7 @@ from unittest import TestCase
 
 from flexmock import flexmock
 
-from redbike import Redbike, RoundRobin, StopWork
+from redbike import Redbike, RoundRobin, StopWork, UnsetJob
 from redbike.schedule import _e  # for py3 compat
 
 
@@ -21,6 +21,8 @@ class TestWorker(RoundRobin):
             raise StopWork("Stop this job.")
         if jobid.startswith('fail:'):
             raise Exception("Boom")
+        if jobid.startswith('unset:'):
+            raise UnsetJob("Unset this job")
         if jobid.endswith('Z'):
             time.sleep(2)
 
@@ -90,6 +92,7 @@ class RedbikeTests(TestCase):
                           'working': False})
         #B: Un-setting a job does remove it from the work queue.
         self.bike.set('job:A', 'CONTINUE')
+        self.assertEqual(self.queue(), ['job:A'])
         self.bike.unset('job:A')
         self.assertEqual(self.queue(), [])
         #B: An unset job is removed from queue.
@@ -262,6 +265,37 @@ class RedbikeTests(TestCase):
         #B: Raising StopWork cause the job to not run again.
         self.work_round()
         self.assertEqual(self.result('stopper:A'), '1')
+
+    def test_unset_job_via_work_exception(self):
+        self.assertEqual(self.queue(), [])
+        self.assertEqual(self.result('unset:A'), None)
+        self.assertEqual(self.schedules(), {})
+        self.assertEqual(self.timeline(), [])
+
+        #B: Raising UnsetJob causes the job to be unset
+        self.bike.set(jobid='unset:A', schedule='CONTINUE')
+
+        self.assertEqual(self.queue(), ['unset:A'])
+        self.assertEqual(self.result('unset:A'), None)
+        self.assertEqual(self.schedules(), {'unset:A': 'CONTINUE'})
+        self.assertEqual(self.timeline(), [])
+        tell = self.bike.tell('unset:A')
+        self.assertEqual(tell['next_run'], None)
+        self.assertEqual(tell['schedule'], 'CONTINUE')
+        self.assertTrue(tell['status'].startswith('ENQ:'))
+        self.assertEqual(tell['working'], False)
+
+        self.work_round()
+
+        self.assertEqual(self.queue(), [])
+        self.assertEqual(self.result('unset:A'), '1')
+        self.assertEqual(self.schedules(), {})
+        self.assertEqual(self.timeline(), [])
+        tell = self.bike.tell('unset:A')
+        self.assertEqual(tell['next_run'], None)
+        self.assertEqual(tell['schedule'], None)
+        self.assertEqual(tell['status'], None)
+        self.assertEqual(tell['working'], False)
 
     def test_job_blows_up(self):
         self.bike.set('fail:A', 'CONTINUE')

@@ -25,6 +25,10 @@ class StopWork(Exception):
     """Just schedule the current job to STOP."""
 
 
+class UnsetJob(Exception):
+    """Unset the job from the queue."""
+
+
 ENQUEUE_LUA = """
 local workqueue = ARGV[1]
 local jobid = ARGV[2]
@@ -70,7 +74,6 @@ class Redbike(object):
         self.statuses_key = '%s-statuses' % self.prefix
         self.schedules_key = '%s-schedules' % self.prefix
         self.timeline_key = '%s-timeline' % self.prefix
-        self.outstanding_key = '%s-outstanding' % self.prefix
         self.control_key = '%s-control' % self.prefix
         self.enqueue_script = self._register_script(ENQUEUE_LUA)
         self.consume_script = self._register_script(CONSUME_LUA)
@@ -113,7 +116,6 @@ class Redbike(object):
         self.redis.hdel(self.statuses_key, jobid)
         self.redis.hdel(self.schedules_key, jobid)
         self.redis.zrem(self.timeline_key, jobid)
-        self.redis.srem(self.outstanding_key, jobid)
         self.remove_from_queue(jobid)
 
     def add_to_timeline(self, jobid, timestamp):
@@ -239,6 +241,10 @@ class Redbike(object):
                         backoff = self.worker.work(jobid)
                     except StopWork:
                         self.set_schedule(jobid, 'STOP')
+                    except UnsetJob:
+                        self.unset(jobid)
+                        self.recycle(jobid, jobtag)
+                        continue
                     self.reschedule(jobid, jobtag, backoff=backoff)
                 except Exception as ex:
                     self.log.exception(ex)

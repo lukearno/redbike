@@ -109,7 +109,8 @@ $ redbike work [<WORKER>]
 
 Redbike consumes jobs from the work queues using the worker class's
 `queue_names()` method and passes them to the worker's `work()` method.
-If `StopWork` is raised, the job's schedule is set to `STOP`. If
+If `StopWork` is raised, the job's schedule is set to `STOP`. If `UnsetJob`
+is raised, the job will be unset (removed from the rotation).  If
 any other exception is raised it is logged and the job is not 
 rescheduled. If the job takes longer than the timeout it is also not 
 rescheduled. Otherwise the job's schedule is checked and it
