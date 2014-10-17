@@ -277,7 +277,7 @@ class RedbikeTests(TestCase):
 
         self.assertEqual(self.queue(), ['unset:A'])
         self.assertEqual(self.result('unset:A'), None)
-        self.assertEqual(self.schedules(), {'unset:A': 'CONTINUE'})
+        self.assertEqual(self.schedules(), {b'unset:A': 'CONTINUE'})
         self.assertEqual(self.timeline(), [])
         tell = self.bike.tell('unset:A')
         self.assertEqual(tell['next_run'], None)
